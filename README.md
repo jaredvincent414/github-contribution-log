@@ -1,17 +1,18 @@
-# Contribution [#]: [Issue Title]
+# Contribution [810
+]: [Quality filters: Flaws in the current logic
+]
 
-**Contribution Number:** [1 / 2 / 3]  
+**Contribution Number:** [582]  
 **Student:** [Your Name]  
-**Issue:** [GitHub issue link]  
-**Status:** [Phase I / Phase II / Phase III / Phase IV] [In Progress / Complete]
+**Issue:** [https://github.com/Listenarrs/Listenarr/issues/582]  
+**Status:** [Phase I | Complete]
 
 ---
 
 ## Why I Chose This Issue
 
 [1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
-
----
+I am eager to contribute to Listenarr mostly because I have been learning and sharpening my C# and .NET skills and working in a real-world codebase for a tool I's actually use would really do me good in strengthening my skills. Quality filtering is core to the user experience, it's the logic that decides what actually lands in your library.
 
 ## Understanding the Issue
 
