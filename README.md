@@ -28,7 +28,9 @@
 
 ### Affected Components
 
-[Which parts of the codebase are involved?]
+- DownloadImportService.CS - IsQualityBetter
+- Models: QualityProfile.CS, AudiobookFile.cs
+- There is a related issue # 549 on quality determnination algorithm
 
 ---
 
