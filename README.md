@@ -38,20 +38,21 @@
 
 ### Environment Setup
 
-[Notes on setting up your local development environment - challenges you faced, how you solved them]
+- Tools: NET SDK 10.0.201, Node v24.16.0 (The repo README still says .NET8/ Node 20)
+- upgraded Node and .NET
+- I run app the full app (npm run dev - runs the full program in the same local port), could do it in different terminal for both frontend and backend
+- The flowed logic lived in DownloadImportService, which already has unit-test suite. Reproduction using the tests was way faster.
 
 ### Steps to Reproduce
 
-1. [Step 1]
-2. [Step 2]
-3. [Observed result]
+1. Create a quality profile that is above a flossy MP3, and an audiobook assigned to that profile.
+2. Add an existing AudiobookFile with format = "flac"
+3. Import a completed download that is a low quality MP3
+4. Observed result: The MP3 is imported instead of skipped, the audiobook ends up with 2 files instead of 1.
 
 ### Reproduction Evidence
 
-- **Commit showing reproduction:** [Link to commit in your fork]
-- **Screenshots/logs:** [If applicable]
-- **My findings:** [What you discovered during reproduction]
-
+- 
 ---
 
 ## Solution Approach
