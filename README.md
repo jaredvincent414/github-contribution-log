@@ -52,7 +52,7 @@
 
 ### Reproduction Evidence
 
-- 
+- https://github.com/jaredvincent414/Listenarr/tree/fix-issue-582
 ---
 
 ## Solution Approach
