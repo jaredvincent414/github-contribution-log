@@ -2,8 +2,8 @@
 [Quality filters: Flaws in the current logic
 ]
 
-**Contribution Number:** [582]  
-**Student:** [Your Name]  
+**Contribution Number:** 582  
+**Student:** Vincent Jared  
 **Issue:** [https://github.com/Listenarrs/Listenarr/issues/582]  
 **Status:** [Phase I | Complete]
 
