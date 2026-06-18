@@ -11,8 +11,7 @@
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
-I am eager to contribute to Listenarr mostly because I have been learning and sharpening my C# and .NET skills and working in a real-world codebase for a tool I's actually use would really do me good in strengthening my skills. Quality filtering is core to the user experience, it's the logic that decides what actually lands in your library.
+[I am eager to contribute to Listenarr mostly because I have been learning and sharpening my C# and .NET skills and working in a real-world codebase for a tool I's actually use would really do me good in strengthening my skills. Quality filtering is core to the user experience, it's the logic that decides what actually lands in your library.]
 
 ## Understanding the Issue
 
@@ -21,11 +20,11 @@ I am eager to contribute to Listenarr mostly because I have been learning and sh
 
 ### Expected Behavior
 
-[What should happen?]
+[When importing, the existing audiobook quality and the download quality should be compared according to the configured quality profiles priorities, and the import should be skipped when the incoming file is not an upgrade]
 
 ### Current Behavior
 
-[What actually happens?]
+[The quality profile is ignored since "Flac" contains no digits, the bitrate parse fails, the numeric comparison branch is skipped and the method returns true i.e the the MP3 file is imported anyway, leaving the the audiobook with both files, the worse and the better quality one over it.]
 
 ### Affected Components
 
