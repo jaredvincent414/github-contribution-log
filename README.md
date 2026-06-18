@@ -1,5 +1,5 @@
 # Contribution [810
-]: [Quality filters: Flaws in the current logic
+[Quality filters: Flaws in the current logic
 ]
 
 **Contribution Number:** [582]  
@@ -17,8 +17,7 @@ I am eager to contribute to Listenarr mostly because I have been learning and sh
 ## Understanding the Issue
 
 ### Problem Description
-
-[In your own words, what's broken or missing?]
+[When a completed download is imported for an audiobook that already has files, Listenarr is suppose to use the audiobook quality profile to decide whether the incoming file is an upgrade. This logic is implemented in the DownloadImportService.IsQualityBetter, which is currently broken: it accepts a QualityProfile argument but it never actually uses it, and it only compares qualities when both can be regex-parsed into a numeric bitrate. For any non-numeric bitrate format like FLAC or MB4, the comparison falls through to return true, treating the incoming files as always better.]
 
 ### Expected Behavior
 
