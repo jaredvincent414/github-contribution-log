@@ -59,30 +59,92 @@
 
 ### Analysis
 
-[Your analysis of the root cause - what's causing the issue?]
+[The import path is broken. First, DownloadImportService.IsQualityBetter accepts a QualityProfile but never reads it, it only regex-extracts a numeric bitrate from each side and, for any non-numeric format falls through returning True. !isQualityBetter is never true for the non-numeric formats and the lower quality file imports]
 
 ### Proposed Solution
 
-[High-level description of your fix approach]
+[Make the import-time comparison profile-aware by ranking both the existing quality and incoming quality through profile.Qualities priority, and resolve qualities to a profile QualityDefinition by Codec + Bitrate+IsLossless instead of fragile free-form string quality]
 
 ### Implementation Plan
 
 Using UMPIRE framework (adapted):
 
-**Understand:** [Restate the problem]
+**Understand:** [When a completed download is importedfor an audiobook that already has files, Listenarr should check the audiobook's quality profile to decide whether the incoming file is an upgrade. Currently the decision is a no-op for most real cases, for example a lossy mp3 gets imported on top of an existing lossless FLAC leaving two files]
 
-**Match:** [What similar patterns/solutions exist in the codebase?]
+**Match:** [AutomaticSearchService.IsQualityBetter already compares qualities via profile.Qualities priority. There are also existing tests to mirror like QualityProfileScoringTests, QualityScoringTests ]
 
 **Plan:** [Step-by-step implementation plan]
-1. [Modify file X to do Y]
-2. [Add function Z]
-3. [Update tests]
+1. [Quality normalization mapper-AudioMetadata/AudiobookFile → a profile QualityDefinition via codec+bitrate+lossless) so all three vocabularies converge.]
+2. [Rewrite DownloadImportService.IsQualityBetter to rank both sides by profile priority, with a documented fallback for unknown quality / no profile (don't block)]
+3. [Fix the best existing quality loop so that it doesn't overwrite Format and handles lossless/non-MP3 correctly]
+4. [Extract one shared comparator used by both import and search to kill the duplication.]
+5. [update and extend the test]
 
 **Implement:** [Link to your branch/commits as you work]
 
-**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
+**Review:** 
+### Correctness (did I fix the real bug?)
 
-**Evaluate:** [How will you verify it works?]
+- [ ] `IsQualityBetter` in `listenarr.application/Downloads/DownloadImportService.cs:490` now
+      **reads the `QualityProfile`** (no longer ignores it).
+- [ ] Quality strings are **normalized before comparison** — candidate, existing, and profile
+      qualities use one vocabulary (root cause #2); the fix isn't just a string-equality patch
+      that breaks on real metadata.
+- [ ] The "best existing quality" loop (`DownloadImportService.cs:107-114`) no longer overwrites
+      `Format` with MP3 labels or mis-divides bitrate.
+- [ ] Lossless-over-lossy is handled (FLAC vs MP3), not just numeric MP3 bitrates.
+- [ ] Unknown quality / no profile still **allows** import (no silent drops) — and that's
+      intentional/commented, not accidental.
+- [ ] The two `IsQualityBetter` contracts (import = "allow" vs search = "strictly better") are
+      reconciled — no inverted-boolean bug at any call site (`DownloadImportService.cs:186`).
+
+## Tests
+
+- [ ] Repro `QualityGating_LosslessExisting_SkipsLossyDownload` now **passes**.
+- [ ] Regression `QualityGating_SkipsLowerQualityImport` still passes.
+- [ ] Added the matrix: numeric upgrade, cross-format upgrade, equal-format reimport,
+      unknown/no-profile.
+- [ ] `dotnet test --filter "FullyQualifiedName~DownloadImportServiceTests"` green.
+- [ ] Full `dotnet test` green; `cd fe && npm run test:unit` + `npm run type-check` green.
+
+## Code style & architecture
+
+- [ ] C# **4-space** indentation; meaningful names; comments on the comparison logic.
+- [ ] Helper lives in `application`/`domain` — **no infrastructure/EF leakage** (layering hook
+      passes).
+- [ ] No new compiler warnings; pre-commit hook (format + layering + async-void) passes.
+- [ ] *nix line endings.
+
+## Scope discipline
+
+- [ ] One bug-fix per PR — the "delete existing files when better" idea is **deferred**, not
+      bundled.
+- [ ] Diff contains only files relevant to #582 (no stray/IDE/config noise).
+
+## Commits
+
+- [ ] Fix is its own commit, Conventional-Commit style with scope + issue ref, e.g.
+      `fix(downloads): make import quality comparison profile-aware (#582)`.
+- [ ] History is meaningful or squashed (no "wip"/"fix typo" noise).
+
+## PR readiness (enforced by repo)
+
+- [ ] Rebased on **latest `canary`**; PR targets **`canary`** (not `main`/`beta`).
+- [ ] Exactly **one** version label: **`patch`** (`.github/workflows/validate-pr-labels.yml` fails
+      on zero or multiple).
+- [ ] PR body fills `.github/PULL_REQUEST_TEMPLATE.md`: Summary / Changes→Fixed / Testing / Notes.
+- [ ] Body says **"Fixes #582"**; references related **#549**.
+- [ ] CONTRIBUTING PR checklist all ticked (self-review, comments, tests added, tests pass,
+      no warnings, docs if needed, rebased).
+
+## Final pass
+
+- [ ] Re-read my own diff line by line as if reviewing someone else.
+- [ ] Confirmed the behavior change manually or via the skip log line
+      (`DownloadImportService.cs:189`) if running the app.
+]
+
+**Evaluate:** [ Repro test QualityGating_LosslessExisting_SkipsLossyDownload flips green; QualityGating_SkipsLowerQualityImport stays green; full dotnet test + cd fe && npm run test:unit + npm run type-check all pass.]
 
 ---
 
@@ -90,14 +152,18 @@ Using UMPIRE framework (adapted):
 
 ### Unit Tests
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+- [ ] Lossless vs lossy: existing FLAC + lossy MP3 download → MP3 skipped (the repro; currently failing).
+- [ ] Numeric downgrade (regression): existing MP3 320 + MP3 128 → skipped (already passing — must stay green).
+- [ ] Numeric upgrade: existing MP3 128 + MP3 320 → imported.
+- [ ] Cross-format upgrade: existing MP3 + FLAC download, profile ranks FLAC higher → imported.
+- [ ] Equal-format reimport: same quality on both sides → handled per policy (not treated as a spurious upgrade).
+- [ ] Unknown quality / no profile: import allowed (explicit fallback, no silent drop).
+
 
 ### Integration Tests
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+- [ ]  Full ImportDownloadFilesAsync flow against a DB-backed audiobook with an existing file + assigned profile → verify final AudiobookFile count and the kept file's format.
+- [ ]  Multi-file batch where some files are upgrades and some aren't → only upgrades imported
 
 ### Manual Testing
 
