@@ -80,7 +80,7 @@ Using UMPIRE framework (adapted):
 4. [Extract one shared comparator used by both import and search to kill the duplication.]
 5. [update and extend the test]
 
-**Implement:** [Link to your branch/commits as you work]
+**Implement:** [https://github.com/jaredvincent414/Listenarr/tree/fix-issue-582]
 
 **Review:** 
 ### Correctness (did I fix the real bug?)
@@ -142,7 +142,7 @@ Using UMPIRE framework (adapted):
 - [ ] Re-read my own diff line by line as if reviewing someone else.
 - [ ] Confirmed the behavior change manually or via the skip log line
       (`DownloadImportService.cs:189`) if running the app.
-]
+
 
 **Evaluate:** [ Repro test QualityGating_LosslessExisting_SkipsLossyDownload flips green; QualityGating_SkipsLowerQualityImport stays green; full dotnet test + cd fe && npm run test:unit + npm run type-check all pass.]
 
