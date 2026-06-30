@@ -5,7 +5,7 @@
 **Contribution Number:** 582  
 **Student:** Vincent Jared  
 **Issue:** [https://github.com/Listenarrs/Listenarr/issues/582]  
-**Status:** [Phase I | Complete]
+**Status:** [Phase II | Complete]
 
 ---
 
