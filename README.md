@@ -1,226 +1,305 @@
-# Contribution [810
-[Quality filters: Flaws in the current logic
-]
+# Contribution [810]
+[Quality filters: Flaws in the current logic]
 
-**Contribution Number:** 582  
-**Student:** Vincent Jared  
-**Issue:** [https://github.com/Listenarrs/Listenarr/issues/582]  
-**Status:** [Phase II | Complete]
+**Contribution Number:** 582
+**Student:** Vincent Jared
+**Issue:** https://github.com/Listenarrs/Listenarr/issues/582
+**Status:** Phase II | Fix implemented & committed; matrix tests + PR outstanding
 
 ---
 
 ## Why I Chose This Issue
 
-[I am eager to contribute to Listenarr mostly because I have been learning and sharpening my C# and .NET skills and working in a real-world codebase for a tool I's actually use would really do me good in strengthening my skills. Quality filtering is core to the user experience, it's the logic that decides what actually lands in your library.]
+I am eager to contribute to Listenarr mostly because I have been learning and sharpening my C#
+and .NET skills, and working in a real-world codebase for a tool I'd actually use would do me
+good in strengthening those skills. Quality filtering is core to the user experience — it's the
+logic that decides what actually lands in your library.
 
 ## Understanding the Issue
 
 ### Problem Description
-[When a completed download is imported for an audiobook that already has files, Listenarr is suppose to use the audiobook quality profile to decide whether the incoming file is an upgrade. This logic is implemented in the DownloadImportService.IsQualityBetter, which is currently broken: it accepts a QualityProfile argument but it never actually uses it, and it only compares qualities when both can be regex-parsed into a numeric bitrate. For any non-numeric bitrate format like FLAC or MB4, the comparison falls through to return true, treating the incoming files as always better.]
+When a completed download is imported for an audiobook that already has files, Listenarr is
+supposed to use the audiobook's quality profile to decide whether the incoming file is an
+upgrade. That decision ran through `ImportQualityEvaluator.IsAcceptable`
+(`listenarr.application/Downloads/Import/ImportQualityEvaluator.cs`), which was broken in two
+ways: it accepted a `QualityProfile` argument but **never read it** (the profile was used only
+as a null-check), and it decided purely by regex-extracting a numeric bitrate from each side.
+
+> NOTE: The issue text and my initial write-up referred to
+> `DownloadImportService.IsQualityBetter`. That method no longer exists — the import path was
+> refactored before I started, and the broken logic now lives in `ImportQualityEvaluator`.
+> The diagnosis held; only the location had moved.
 
 ### Expected Behavior
+On import, the existing audiobook quality and the download quality should be compared according
+to the configured quality profile's priorities, and the import should be skipped when the
+incoming file is not an upgrade.
 
-[When importing, the existing audiobook quality and the download quality should be compared according to the configured quality profiles priorities, and the import should be skipped when the incoming file is not an upgrade]
-
-### Current Behavior
-
-[The quality profile is ignored since "Flac" contains no digits, the bitrate parse fails, the numeric comparison branch is skipped and the method returns true i.e the the MP3 file is imported anyway, leaving the the audiobook with both files, the worse and the better quality one over it.]
+### Current Behavior (before fix)
+For any non-numeric quality (e.g. an existing "flac"), the bitrate regex fails to parse, the
+numeric comparison is skipped, and the method falls through to `return true`. The lossy MP3 is
+imported anyway, leaving the audiobook with both files — the worse one sitting on top of the
+better.
 
 ### Affected Components
-
-- DownloadImportService.CS - IsQualityBetter
-- Models: QualityProfile.CS, AudiobookFile.cs
-- There is a related issue # 549 on quality determnination algorithm
+- `listenarr.application/Downloads/Import/ImportQualityEvaluator.cs` — `IsAcceptable` (root cause)
+- `listenarr.application/Downloads/Import/DownloadImportService.cs` — best-existing loop + the gate
+- `listenarr.domain/Common/QualityMatcher.cs` — the correct comparator that already existed
+- Models: `QualityProfile.cs`, `AudiobookFile.cs`, `AudioMetadata.cs`
+- Related: issue #549 (quality determination algorithm)
 
 ---
 
 ## Reproduction Process
 
 ### Environment Setup
-
-- Tools: NET SDK 10.0.201, Node v24.16.0 (The repo README still says .NET8/ Node 20)
-- upgraded Node and .NET
-- I run app the full app (npm run dev - runs the full program in the same local port), could do it in different terminal for both frontend and backend
-- The flowed logic lived in DownloadImportService, which already has unit-test suite. Reproduction using the tests was way faster.
+- .NET SDK 10.0.201, Node v24.16.0 (the repo README still says .NET 8 / Node 20; CONTRIBUTING
+  correctly says .NET 10 / Node 24 — the README is stale)
+- Upgraded Node and .NET accordingly
+- App runs with `npm run dev` from the root (concurrently starts the API on :4545, waits on the
+  readiness probe, then Vite on :5173); `dotnet watch run` + `cd fe && npm run dev` in separate
+  terminals is better for backend iteration
+- The flawed logic sits in the import path, which already has a unit-test suite, so reproducing
+  via tests was far faster than driving the real app
 
 ### Steps to Reproduce
-
-1. Create a quality profile that is above a flossy MP3, and an audiobook assigned to that profile.
-2. Add an existing AudiobookFile with format = "flac"
-3. Import a completed download that is a low quality MP3
-4. Observed result: The MP3 is imported instead of skipped, the audiobook ends up with 2 files instead of 1.
+1. Create a quality profile that ranks lossless FLAC above lossy MP3, and assign an audiobook to it.
+2. Add an existing `AudiobookFile` with `Format = "flac"`.
+3. Import a completed download that is a lossy MP3.
+4. Observed: the MP3 is imported instead of skipped; the audiobook ends up with 2 files instead of 1.
 
 ### Reproduction Evidence
+- Branch: https://github.com/jaredvincent414/Listenarr/tree/fix-issue-582
+- Failing test: `QualityGating_LosslessExisting_SkipsLossyDownload`
+  → `Assert.Single() Failure: The collection contained 2 items`
 
-- https://github.com/jaredvincent414/Listenarr/tree/fix-issue-582
 ---
 
 ## Solution Approach
 
 ### Analysis
+Two root causes, not one:
+1. **The profile was ignored.** `IsAcceptable` took a `QualityProfile` and never read it.
+2. **Vocabulary mismatch.** The decision compared free-form strings ("flac", "MP3 320kbps",
+   "128kbps") that three subsystems each spell differently, via a regex that only understands
+   digits. Any lossless format has no digits, so it fell through to "acceptable".
 
-[The import path is broken. First, DownloadImportService.IsQualityBetter accepts a QualityProfile but never reads it, it only regex-extracts a numeric bitrate from each side and, for any non-numeric format falls through returning True. !isQualityBetter is never true for the non-numeric formats and the lower quality file imports]
+A correct, profile-aware, lossless-aware comparator **already existed** in the domain:
+`QualityMatcher` (`Match`, `MatchLabel`, `IsLabelBetter`). The automatic-search path already used
+it via `AutomaticSearchQualityEvaluator`. **Import was the only path still on the broken regex
+evaluator.** So the fix was not to build a comparator — it was to route import onto the one that
+already existed.
 
 ### Proposed Solution
+Make the import-time comparison profile-aware by projecting both sides into `AudioQualityInput`
+(the shared codec/container/format/bitrate shape `QualityMatcher` consumes) and ranking them by
+the profile's `QualityDefinition.Priority`, instead of comparing fragile free-form strings.
 
-[Make the import-time comparison profile-aware by ranking both the existing quality and incoming quality through profile.Qualities priority, and resolve qualities to a profile QualityDefinition by Codec + Bitrate+IsLossless instead of fragile free-form string quality]
+### Implementation Plan (UMPIRE, adapted)
 
-### Implementation Plan
+**Understand:** When a completed download is imported for an audiobook that already has files,
+Listenarr should check the quality profile to decide whether the incoming file is an upgrade.
+The decision was a no-op for most real cases — a lossy MP3 lands on top of an existing lossless
+FLAC, leaving two files.
 
-Using UMPIRE framework (adapted):
+**Match:** `QualityMatcher` in `listenarr.domain/Common/` is the single source of truth for what
+a profile's priority ordering means (lower number = higher quality) and how an on-disk file maps
+onto a profile rung. `AutomaticSearchQualityEvaluator.IsQualityBetter` already delegates to it.
+Existing tests to mirror: `QualityProfileScoringTests`, `QualityScoringTests`.
 
-**Understand:** [When a completed download is importedfor an audiobook that already has files, Listenarr should check the audiobook's quality profile to decide whether the incoming file is an upgrade. Currently the decision is a no-op for most real cases, for example a lossy mp3 gets imported on top of an existing lossless FLAC leaving two files]
+**Plan:**
+1. Expose `QualityMatcher.IsLossless(AudioQualityInput)` (the logic existed but was private).
+2. Add projections `FromFile(AudiobookFile)` / `FromMetadata(AudioMetadata?, path)` so the
+   library file and the incoming download converge on one vocabulary.
+3. Rewrite `IsAcceptable` to rank both sides by profile priority, with a documented fallback for
+   unknown quality / no profile (don't block).
+4. Fix the best-existing loop so it stops hardcoding MP3 labels and clobbering `Format`.
+5. Fix and extend the tests.
 
-**Match:** [AutomaticSearchService.IsQualityBetter already compares qualities via profile.Qualities priority. There are also existing tests to mirror like QualityProfileScoringTests, QualityScoringTests ]
+**Implement:** https://github.com/jaredvincent414/Listenarr/tree/fix-issue-582
+- `c0b0e4ef test(downloads): show lossy MP3 imported over existing FLAC (#582)`
+- `133a0400 fix(downloads): make import quality comparison profile-aware (#582)`
 
-**Plan:** [Step-by-step implementation plan]
-1. [Quality normalization mapper-AudioMetadata/AudiobookFile → a profile QualityDefinition via codec+bitrate+lossless) so all three vocabularies converge.]
-2. [Rewrite DownloadImportService.IsQualityBetter to rank both sides by profile priority, with a documented fallback for unknown quality / no profile (don't block)]
-3. [Fix the best existing quality loop so that it doesn't overwrite Format and handles lossless/non-MP3 correctly]
-4. [Extract one shared comparator used by both import and search to kill the duplication.]
-5. [update and extend the test]
+**Review:**
 
-**Implement:** [https://github.com/jaredvincent414/Listenarr/tree/fix-issue-582]
-
-**Review:** 
 ### Correctness (did I fix the real bug?)
-
-- [ ] `IsQualityBetter` in `listenarr.application/Downloads/DownloadImportService.cs:490` now
-      **reads the `QualityProfile`** (no longer ignores it).
-- [ ] Quality strings are **normalized before comparison** — candidate, existing, and profile
-      qualities use one vocabulary (root cause #2); the fix isn't just a string-equality patch
-      that breaks on real metadata.
-- [ ] The "best existing quality" loop (`DownloadImportService.cs:107-114`) no longer overwrites
-      `Format` with MP3 labels or mis-divides bitrate.
-- [ ] Lossless-over-lossy is handled (FLAC vs MP3), not just numeric MP3 bitrates.
-- [ ] Unknown quality / no profile still **allows** import (no silent drops) — and that's
-      intentional/commented, not accidental.
-- [ ] The two `IsQualityBetter` contracts (import = "allow" vs search = "strictly better") are
-      reconciled — no inverted-boolean bug at any call site (`DownloadImportService.cs:186`).
+- [x] The import gate now **reads the `QualityProfile`** (no longer ignores it).
+- [x] Quality is **normalized before comparison** — candidate, existing, and profile qualities
+      converge on `AudioQualityInput` / profile rungs; not a string-equality patch.
+- [x] The best-existing loop no longer overwrites `Format` with MP3 labels or mis-buckets bitrate.
+- [x] Lossless-over-lossy is handled (FLAC vs MP3), not just numeric MP3 bitrates.
+- [x] Unknown quality / no profile still **allows** import (no silent drops) — intentional and
+      commented.
+- [x] The two contracts are reconciled: **import = "not worse" (allow-equal)**; **search =
+      "strictly better"** (`QualityMatcher.IsLabelBetter`). No inverted-boolean bug at any call site.
 
 ## Tests
-
-- [ ] Repro `QualityGating_LosslessExisting_SkipsLossyDownload` now **passes**.
-- [ ] Regression `QualityGating_SkipsLowerQualityImport` still passes.
-- [ ] Added the matrix: numeric upgrade, cross-format upgrade, equal-format reimport,
-      unknown/no-profile.
-- [ ] `dotnet test --filter "FullyQualifiedName~DownloadImportServiceTests"` green.
-- [ ] Full `dotnet test` green; `cd fe && npm run test:unit` + `npm run type-check` green.
+- [x] Repro `QualityGating_LosslessExisting_SkipsLossyDownload` now **passes**.
+- [x] Regression `QualityGating_SkipsLowerQualityImport` still passes.
+- [ ] Matrix (numeric upgrade, cross-format upgrade, equal-format reimport, unknown/no-profile)
+      — **still to write**.
+- [x] `dotnet test --filter "FullyQualifiedName~DownloadImportServiceTests"` green (28 passed).
+- [x] Full `dotnet test` green (**1016 passed, 0 failed**); `cd fe && npm run test:unit`
+      (389 passed) + `npm run type-check` green.
 
 ## Code style & architecture
-
-- [ ] C# **4-space** indentation; meaningful names; comments on the comparison logic.
-- [ ] Helper lives in `application`/`domain` — **no infrastructure/EF leakage** (layering hook
-      passes).
-- [ ] No new compiler warnings; pre-commit hook (format + layering + async-void) passes.
-- [ ] *nix line endings.
+- [x] C# 4-space indentation; meaningful names; comparison logic commented.
+- [x] Logic lives in `application` + `domain` — no infrastructure/EF leakage (layering hook passes).
+- [x] **0 warnings, 0 errors** on `dotnet build`; pre-commit hook (format + layering + async-void) passed.
+- [x] *nix line endings.
 
 ## Scope discipline
-
-- [ ] One bug-fix per PR — the "delete existing files when better" idea is **deferred**, not
-      bundled.
-- [ ] Diff contains only files relevant to #582 (no stray/IDE/config noise).
+- [x] One bug-fix per PR — "delete existing files when better" is **deferred**, not bundled. It is
+      blocked on #542 (multi-file size), #736 (recycling bin), #737 (stored codec/bitrate).
+- [x] Diff contains only the 4 relevant files (+89 / −37); no stray/IDE/config noise.
 
 ## Commits
-
-- [ ] Fix is its own commit, Conventional-Commit style with scope + issue ref, e.g.
-      `fix(downloads): make import quality comparison profile-aware (#582)`.
-- [ ] History is meaningful or squashed (no "wip"/"fix typo" noise).
+- [x] Fix is its own commit, Conventional-Commit style with scope + issue ref.
+- [x] History is meaningful: failing test, then fix (red → green).
 
 ## PR readiness (enforced by repo)
-
-- [ ] Rebased on **latest `canary`**; PR targets **`canary`** (not `main`/`beta`).
-- [ ] Exactly **one** version label: **`patch`** (`.github/workflows/validate-pr-labels.yml` fails
-      on zero or multiple).
-- [ ] PR body fills `.github/PULL_REQUEST_TEMPLATE.md`: Summary / Changes→Fixed / Testing / Notes.
-- [ ] Body says **"Fixes #582"**; references related **#549**.
-- [ ] CONTRIBUTING PR checklist all ticked (self-review, comments, tests added, tests pass,
-      no warnings, docs if needed, rebased).
+- [x] Rebased on latest `canary`.
+- [ ] Force-push to fork (`origin` still holds the stale pre-rebase branch).
+- [ ] PR targets `canary`; exactly one **`patch`** label.
+- [ ] PR body fills the template; says "Fixes #582"; references #549.
 
 ## Final pass
+- [ ] Re-read the diff line by line as a reviewer.
+- [x] Behavior confirmed via the test suite (skip path now taken).
 
-- [ ] Re-read my own diff line by line as if reviewing someone else.
-- [ ] Confirmed the behavior change manually or via the skip log line
-      (`DownloadImportService.cs:189`) if running the app.
-
-
-**Evaluate:** [ Repro test QualityGating_LosslessExisting_SkipsLossyDownload flips green; QualityGating_SkipsLowerQualityImport stays green; full dotnet test + cd fe && npm run test:unit + npm run type-check all pass.]
+**Evaluate:** Repro flipped green; regression stayed green; full `dotnet test` (1016),
+`npm run test:unit` (389), and `npm run type-check` all pass; build is warning-free.
 
 ---
 
 ## Testing Strategy
 
 ### Unit Tests
-
-- [ ] Lossless vs lossy: existing FLAC + lossy MP3 download → MP3 skipped (the repro; currently failing).
-- [ ] Numeric downgrade (regression): existing MP3 320 + MP3 128 → skipped (already passing — must stay green).
+- [x] Lossless vs lossy: existing FLAC + lossy MP3 download → MP3 skipped (**the repro; now green**).
+- [x] Numeric downgrade (regression): existing MP3 320 + MP3 128 → skipped (**still green**).
 - [ ] Numeric upgrade: existing MP3 128 + MP3 320 → imported.
 - [ ] Cross-format upgrade: existing MP3 + FLAC download, profile ranks FLAC higher → imported.
-- [ ] Equal-format reimport: same quality on both sides → handled per policy (not treated as a spurious upgrade).
+- [ ] Equal-format reimport: same quality both sides → allowed (multi-file parts must still import).
 - [ ] Unknown quality / no profile: import allowed (explicit fallback, no silent drop).
 
-
 ### Integration Tests
-
-- [ ]  Full ImportDownloadFilesAsync flow against a DB-backed audiobook with an existing file + assigned profile → verify final AudiobookFile count and the kept file's format.
-- [ ]  Multi-file batch where some files are upgrades and some aren't → only upgrades imported
+- [x] Full `ImportDownloadFilesAsync` flow against a DB-backed audiobook with an existing file +
+      assigned profile → final `AudiobookFile` count and kept file's format asserted (this is what
+      the repro test actually exercises — it goes through the real service + repositories).
+- [ ] Multi-file batch where some files are upgrades and some aren't → only upgrades imported.
 
 ### Manual Testing
-
-[What you tested manually and results]
+Not required for this fix — the gate is fully exercised through the service-level test, which is a
+far faster loop than driving the real app. The skip is observable at runtime via the log line in
+`DownloadImportService` ("Skipping import of file ... because candidate quality '...' is not better
+than existing '...'"), which now fires where it previously never did.
 
 ---
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week 3 Progress
 
-[What you built this week, challenges faced, decisions made]
+**Built:**
+- `QualityMatcher.IsLossless(AudioQualityInput)` — made the existing private lossless check public.
+- `ImportQualityEvaluator`: added `FromFile` / `FromMetadata` projections and `Describe` (readable
+  log label); replaced the string+regex `IsAcceptable` with a profile-aware one; deleted
+  `TryParseBitrate`.
+- `DownloadImportService`: removed the hardcoded MP3 bitrate buckets; best-existing file is now
+  chosen by reusing `IsAcceptable` as the comparator; the gate compares projected inputs.
+- Fixed the repro test's profile priorities.
 
-### Week [Y] Progress
+**Challenges / decisions:**
 
-[Continue documenting as you work]
+1. **The issue's stated location was stale.** `DownloadImportService.IsQualityBetter` doesn't exist
+   anymore. I had to trace the current import path to find that the logic had moved to
+   `ImportQualityEvaluator.IsAcceptable`. Lesson: verify the issue's line references against the
+   current code before planning.
+
+2. **My own repro test was subtly wrong.** I had written the profile as
+   `flac Priority = 2, mp3 Priority = 1` with a comment saying it "ranks lossless FLAC above lossy
+   MP3" — but `QualityDefinition.Priority` is documented **lower number = higher quality**, so my
+   profile ranked MP3 *above* FLAC. The test was failing for the wrong reason, and a *correct* fix
+   would have made it fail too. Fixed to `flac = 1, mp3 = 2`. Lesson: a red test isn't automatically
+   a valid red test — verify it fails for the reason you think.
+
+3. **The empty-profile trap (the key design insight).** The existing passing test
+   `QualityGating_SkipsLowerQualityImport` builds its profile with `new QualityProfileBuilder().Build()`,
+   which produces an **empty** `Qualities` list. It only passed because the old regex path ignored the
+   profile entirely. If I had routed *everything* through `QualityMatcher`, that profile would match no
+   rung → the gate would allow the 128kbps downgrade → a currently-**passing** test would break. So
+   `IsAcceptable` needed two paths: profile-priority when the profile can rank both sides, and a
+   codec/bitrate fallback (lossless-beats-lossy, then numeric bitrate) when it can't. The fallback is a
+   bonus: lossy-over-lossless is now blocked **even for users with no quality profile configured**.
+
+4. **Import vs. search semantics.** Search asks "is the candidate *strictly better*?"
+   (`IsLabelBetter`). Import must ask "is the candidate *not worse*?" — allow-equal — because a
+   multi-file audiobook imports chapter parts whose quality *equals* what's already on disk, and a
+   strict-better rule would skip every one of them. Getting this backwards would have been a silent,
+   nasty regression.
 
 ### Code Changes
-
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified (4):**
+  - `listenarr.domain/Common/QualityMatcher.cs` (+7)
+  - `listenarr.application/Downloads/Import/ImportQualityEvaluator.cs` (+76/−…)
+  - `listenarr.application/Downloads/Import/DownloadImportService.cs` (39 changed)
+  - `tests/Features/Application/Downloads/Import/DownloadImportServiceTests.cs` (+4/−4)
+  - Total: **+89 / −37**
+- **Key commits:**
+  - `c0b0e4ef` — `test(downloads): show lossy MP3 imported over existing FLAC (#582)` (failing repro)
+  - `133a0400` — `fix(downloads): make import quality comparison profile-aware (#582)`
+- **Approach decisions:** reuse the existing `QualityMatcher` rather than write a new comparator;
+  keep the import-specific *policy* (allow-equal, allow-unknown) in the application layer and the
+  *ranking* in the domain layer, preserving the project's layering rules.
 
 ---
 
 ## Pull Request
 
-**PR Link:** [GitHub PR URL when submitted]
+**PR Link:** _(not yet opened)_
 
-**PR Description:** [Draft or final PR description - much of the content above can be adapted]
+**PR Description:** _(draft — adapt from Analysis + Testing above)_
 
-**Maintainer Feedback:**
-- [Date]: [Summary of feedback received]
-- [Date]: [How you addressed it]
-
-**Status:** [Awaiting review / Iterating / Approved / Merged]
+**Status:** Not yet submitted — matrix tests outstanding.
 
 ---
 
 ## Learnings & Reflections
 
 ### Technical Skills Gained
-
-[What you learned technically]
+- Reading a layered .NET codebase (domain / application / infrastructure / api) and respecting its
+  boundaries — the repo enforces "no infrastructure references from application" via a git hook.
+- C# pattern matching (`is int x and > 0`), nullable value types, `readonly record struct`, and
+  object-initializer construction.
+- xUnit + builder-pattern test fixtures, and service-level tests that run against real repositories.
+- Git: diagnosing divergent branches, understanding that a rebase rewrites SHAs, and why
+  `--force-with-lease` is the safe way to publish a rebased branch.
 
 ### Challenges Overcome
-
-[What was hard and how you solved it]
+- **Stale issue references** — learned to trust the code over the issue text.
+- **A test that lied** — my own repro had inverted priority numbers; it failed, but for the wrong
+  reason. Catching this before "fixing" the code saved me from writing a fix that satisfied a
+  broken test.
+- **Not breaking a passing test** — discovering the empty-profile case is what forced the
+  two-path design, which turned out to be a *better* fix than the plan I started with.
+- **Environment drift** — after rebasing onto a newer `canary`, all 75 frontend suites failed with
+  `Tsconfig not found`. Root cause was a stale `fe/node_modules` (missing `@tsconfig/node24`, vite
+  behind the lockfile), not my code. `cd fe && npm ci` fixed it. Lesson: after a rebase that touches
+  `package.json`, reinstall before trusting test failures.
 
 ### What I'd Do Differently Next Time
-
-[Reflection on your process]
+- Verify the issue's cited file/line references against `HEAD` **before** writing the plan — half my
+  original plan targeted a method that no longer existed.
+- Search for an existing utility before proposing a new one. I planned to "extract a shared
+  comparator"; `QualityMatcher` already was one. The real fix was much smaller than my plan assumed.
+- Write the repro test's *data* as carefully as its assertions — and sanity-check that it fails for
+  the intended reason.
 
 ---
 
 ## Resources Used
-
-- [Link to helpful documentation]
-- [Tutorial or Stack Overflow post that helped]
-- [GitHub issues or discussions that helped]
+- `BACKEND_ARCHITECTURE.md` — the layering contract and worker/state-ownership rules
+- `CONTRIBUTING.md` — branching model (canary → beta → main), commit and PR rules
+- Issue #582 discussion — especially @Paelsmoessan's comment establishing that the
+  delete/replace strategy is blocked on #542, #736, #737
+- Related issues: #549 (quality determination), #542 (multi-file size aggregation)
