@@ -4,7 +4,7 @@
 **Contribution Number:** 582
 **Student:** Vincent Jared
 **Issue:** https://github.com/Listenarrs/Listenarr/issues/582
-**Status:** Phase II | Fix implemented & committed; matrix tests + PR outstanding
+**Status:** Phase II | Fix + tests complete and pushed; PR outstanding
 
 ---
 
@@ -136,11 +136,18 @@ Existing tests to mirror: `QualityProfileScoringTests`, `QualityScoringTests`.
 ## Tests
 - [x] Repro `QualityGating_LosslessExisting_SkipsLossyDownload` now **passes**.
 - [x] Regression `QualityGating_SkipsLowerQualityImport` still passes.
-- [ ] Matrix (numeric upgrade, cross-format upgrade, equal-format reimport, unknown/no-profile)
-      — **still to write**.
-- [x] `dotnet test --filter "FullyQualifiedName~DownloadImportServiceTests"` green (28 passed).
-- [x] Full `dotnet test` green (**1016 passed, 0 failed**); `cd fe && npm run test:unit`
+- [x] Matrix added (numeric upgrade, cross-format upgrade, equal-format reimport, unknown/no-profile).
+- [x] `dotnet test --filter "FullyQualifiedName~DownloadImportServiceTests"` green.
+- [x] Full `dotnet test` green (**1020 passed, 0 failed**); `cd fe && npm run test:unit`
       (389 passed) + `npm run type-check` green.
+
+> **Honest note on the matrix:** only the repro test distinguishes the fixed code from the broken
+> code. The four matrix cases would also pass against the old logic (its regex bitrate parse fell
+> through to "acceptable" for any non-numeric label, so it imported in all four). Their job is to
+> guard against **over-correction**, not to prove the fix. The load-bearing one is
+> `QualityGating_EqualQuality_IsImported`: it fails if the gate is ever tightened to the
+> strictly-better rule that automatic search uses, which would skip every part of a multi-file
+> audiobook whose quality merely matches what is already on disk.
 
 ## Code style & architecture
 - [x] C# 4-space indentation; meaningful names; comparison logic commented.
@@ -159,7 +166,8 @@ Existing tests to mirror: `QualityProfileScoringTests`, `QualityScoringTests`.
 
 ## PR readiness (enforced by repo)
 - [x] Rebased on latest `canary`.
-- [ ] Force-push to fork (`origin` still holds the stale pre-rebase branch).
+- [x] Pushed to fork (`jaredvincent414/Listenarr:fix-issue-582`, force-with-lease; the remote had
+      held the stale pre-rebase branch). Pre-push hook passed: backend format, FE type-check, FE tests.
 - [ ] PR targets `canary`; exactly one **`patch`** label.
 - [ ] PR body fills the template; says "Fixes #582"; references #549.
 
@@ -167,8 +175,8 @@ Existing tests to mirror: `QualityProfileScoringTests`, `QualityScoringTests`.
 - [ ] Re-read the diff line by line as a reviewer.
 - [x] Behavior confirmed via the test suite (skip path now taken).
 
-**Evaluate:** Repro flipped green; regression stayed green; full `dotnet test` (1016),
-`npm run test:unit` (389), and `npm run type-check` all pass; build is warning-free.
+**Evaluate:** Repro flipped green; regression stayed green; full `dotnet test` (**1020 passed**),
+`npm run test:unit` (389 passed), and `npm run type-check` all pass; build is warning-free.
 
 ---
 
@@ -177,16 +185,21 @@ Existing tests to mirror: `QualityProfileScoringTests`, `QualityScoringTests`.
 ### Unit Tests
 - [x] Lossless vs lossy: existing FLAC + lossy MP3 download → MP3 skipped (**the repro; now green**).
 - [x] Numeric downgrade (regression): existing MP3 320 + MP3 128 → skipped (**still green**).
-- [ ] Numeric upgrade: existing MP3 128 + MP3 320 → imported.
-- [ ] Cross-format upgrade: existing MP3 + FLAC download, profile ranks FLAC higher → imported.
-- [ ] Equal-format reimport: same quality both sides → allowed (multi-file parts must still import).
-- [ ] Unknown quality / no profile: import allowed (explicit fallback, no silent drop).
+- [x] Numeric upgrade: existing MP3 128 + MP3 320 → imported.
+- [x] Cross-format upgrade: existing MP3 + FLAC download, profile ranks FLAC higher → imported.
+- [x] Equal-format reimport: same quality both sides → allowed (multi-file parts must still import).
+- [x] Unknown quality / no profile: import allowed (explicit fallback, no silent drop).
+
+All six live in `DownloadImportServiceTests` as `QualityGating_*` and run against the real service
+and repositories, so they are closer to integration tests than isolated unit tests.
 
 ### Integration Tests
 - [x] Full `ImportDownloadFilesAsync` flow against a DB-backed audiobook with an existing file +
       assigned profile → final `AudiobookFile` count and kept file's format asserted (this is what
-      the repro test actually exercises — it goes through the real service + repositories).
+      the `QualityGating_*` tests actually exercise — real service + real repositories).
 - [ ] Multi-file batch where some files are upgrades and some aren't → only upgrades imported.
+      (Deferred: the current gate compares each candidate against the best existing file, so this
+      is implied but not yet asserted end-to-end.)
 
 ### Manual Testing
 Not required for this fix — the gate is fully exercised through the service-level test, which is a
@@ -240,17 +253,22 @@ than existing '...'"), which now fires where it previously never did.
 
 ### Code Changes
 - **Files modified (4):**
-  - `listenarr.domain/Common/QualityMatcher.cs` (+7)
-  - `listenarr.application/Downloads/Import/ImportQualityEvaluator.cs` (+76/−…)
-  - `listenarr.application/Downloads/Import/DownloadImportService.cs` (39 changed)
-  - `tests/Features/Application/Downloads/Import/DownloadImportServiceTests.cs` (+4/−4)
-  - Total: **+89 / −37**
-- **Key commits:**
+  - `listenarr.domain/Common/QualityMatcher.cs` — expose `IsLossless(AudioQualityInput)`
+  - `listenarr.application/Downloads/Import/ImportQualityEvaluator.cs` — projections + the new
+    profile-aware `IsAcceptable`; deleted the regex `TryParseBitrate`
+  - `listenarr.application/Downloads/Import/DownloadImportService.cs` — removed the hardcoded MP3
+    bitrate buckets; best-existing selection and the gate now use the new comparator
+  - `tests/Features/Application/Downloads/Import/DownloadImportServiceTests.cs` — fixed the repro
+    profile; added the four matrix cases
+  - Fix commit: **+89 / −37**; tests commit: **+148 / −1**
+- **Key commits** (branch `fix-issue-582`, pushed to the fork):
   - `c0b0e4ef` — `test(downloads): show lossy MP3 imported over existing FLAC (#582)` (failing repro)
   - `133a0400` — `fix(downloads): make import quality comparison profile-aware (#582)`
+  - `5abae8a1` — `test(downloads): cover import quality gating matrix (#582)`
 - **Approach decisions:** reuse the existing `QualityMatcher` rather than write a new comparator;
   keep the import-specific *policy* (allow-equal, allow-unknown) in the application layer and the
-  *ranking* in the domain layer, preserving the project's layering rules.
+  *ranking* in the domain layer, preserving the project's layering rules. Kept three commits rather
+  than squashing, so the red → green story stays legible to a reviewer.
 
 ---
 
@@ -286,6 +304,16 @@ than existing '...'"), which now fires where it previously never did.
   `Tsconfig not found`. Root cause was a stale `fe/node_modules` (missing `@tsconfig/node24`, vite
   behind the lockfile), not my code. `cd fe && npm ci` fixed it. Lesson: after a rebase that touches
   `package.json`, reinstall before trusting test failures.
+
+- **An architecture mismatch that broke the pre-push hook.** The push failed with
+  `Cannot find module '@rolldown/binding-darwin-x64'`, even though the frontend tests passed when I
+  ran them by hand. Cause: my `/usr/local/bin/git` is an **x86_64-only** binary, so on Apple Silicon
+  it runs under Rosetta and every process it spawns — including the husky hook — inherits x86_64.
+  `node` is a universal binary, so the hook's node ran its **x64 slice** and looked for an x64
+  rolldown binding, while `npm ci` (running under arm64 node) had installed only the **arm64** one.
+  Pushing through `/usr/bin/git` (Apple's, which has a native arm64 slice) made the hook pass. The
+  real lesson: when a hook fails but the same command succeeds in your shell, suspect the
+  *environment the hook runs in*, not the command.
 
 ### What I'd Do Differently Next Time
 - Verify the issue's cited file/line references against `HEAD` **before** writing the plan — half my
