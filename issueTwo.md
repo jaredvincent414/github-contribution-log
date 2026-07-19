@@ -1,7 +1,7 @@
 
-## Issue Selected
-
-Issue: [#4043 - Backup settings to file](https://github.com/web-scrobbler/web-scrobbler/issues/4043)
+**Student:** Vincent Jared
+**Issue:** [#4043 - Backup settings to file](https://github.com/web-scrobbler/web-scrobbler/issues/4043)
+**Status:** Phase I | Issue selection and Contribution log set up completed
 
 ## Problem Summary
 
