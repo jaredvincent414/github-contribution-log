@@ -4,7 +4,7 @@
 **Contribution Number:** 582
 **Student:** Vincent Jared
 **Issue:** https://github.com/Listenarrs/Listenarr/issues/582
-**Status:** Phase II | Fix + tests complete and pushed; PR outstanding
+**Status:** Phase IV | PR #752 open against upstream, awaiting maintainer review
 
 ---
 
@@ -168,8 +168,10 @@ Existing tests to mirror: `QualityProfileScoringTests`, `QualityScoringTests`.
 - [x] Rebased on latest `canary`.
 - [x] Pushed to fork (`jaredvincent414/Listenarr:fix-issue-582`, force-with-lease; the remote had
       held the stale pre-rebase branch). Pre-push hook passed: backend format, FE type-check, FE tests.
-- [ ] PR targets `canary`; exactly one **`patch`** label.
-- [ ] PR body fills the template; says "Fixes #582"; references #549.
+- [x] PR targets `canary`.
+- [ ] Exactly one **`patch`** label. Not yet applied — labeling requires repo-admin rights I don't
+      have as an outside contributor; a maintainer will need to add it during triage.
+- [x] PR body fills the template; says "Fixes #582"; references #549.
 
 ## Final pass
 - [ ] Re-read the diff line by line as a reviewer.
@@ -274,11 +276,28 @@ than existing '...'"), which now fires where it previously never did.
 
 ## Pull Request
 
-**PR Link:** _(not yet opened)_
+**PR Link:** https://github.com/Listenarrs/Listenarr/pull/752
 
-**PR Description:** _(draft — adapt from Analysis + Testing above)_
+**Summary:** Import gating ran through `ImportQualityEvaluator.IsAcceptable`, which accepted a
+`QualityProfile` but never read it, so any non-numeric quality (an existing FLAC) fell through to
+"acceptable" and a lossy MP3 could import on top of a lossless file. The PR routes import onto the
+same profile-aware `QualityMatcher` the automatic-search path already uses, comparing "not worse"
+(allow-equal) rather than the strictly-better rule search uses, so multi-file audiobook parts that
+match on-disk quality still import. The delete/replace-on-upgrade half of #582 is deliberately out
+of scope, deferred behind #542, #736, and #737.
 
-**Status:** Not yet submitted — matrix tests outstanding.
+**Status:** Open, awaiting maintainer review. Opened 2026-08-11. `@Paelsmoessan` was tagged via PR
+comment. `patch` label requested but not yet applied (needs maintainer/admin rights).
+
+---
+
+## Maintainer Feedback Log
+
+| Date | Feedback | My Response | Commit Ref |
+|------|----------|--------------|------------|
+| _(none yet)_ | PR #752 opened 2026-08-11; no maintainer feedback received yet. | — | — |
+
+_This table will be updated as review comments come in._
 
 ---
 
